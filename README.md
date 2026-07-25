@@ -20,24 +20,36 @@ LlamaMed-3.1-8B-Reasoner is fine-tuned from **Llama-3.1-8B-Instruct** on **Reaso
 ## Usage
 
 ```python
-from unsloth import FastLanguageModel
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+import torch
 
-model, tokenizer = FastLanguageModel.from_pretrained(
-    model_name = "Rumiii/LlamaMed-3.1-8B-Reasoner",
-    max_seq_length = 1024,
-    load_in_4bit = True,
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.float16,
 )
-FastLanguageModel.for_inference(model)
+
+tokenizer = AutoTokenizer.from_pretrained("Rumiii/LlamaMed-3.1-8B-Reasoner")
+model = AutoModelForCausalLM.from_pretrained(
+    "Rumiii/LlamaMed-3.1-8B-Reasoner",
+    device_map={"": 0},
+    quantization_config=bnb_config,
+)
 
 messages = [
-    {"role": "user", "content": "A 45-year-old man presents with polyuria, polydipsia, and weight loss. Fasting blood glucose is 210 mg/dL. What is the most likely diagnosis?"}
+    {"role": "user", "content": "A 45-year-old man presents with polyuria, polydipsia, and weight loss. Fasting blood glucose is 210 mg/dL. What is the most likely diagnosis?\nA. Type 1 Diabetes Mellitus\nB. Type 2 Diabetes Mellitus\nC. Diabetes Insipidus\nD. Cushing's Syndrome"},
 ]
+
 inputs = tokenizer.apply_chat_template(
-    messages, add_generation_prompt=True, tokenize=True, return_tensors="pt"
+    messages,
+    add_generation_prompt=True,
+    tokenize=True,
+    return_dict=True,
+    return_tensors="pt",
 ).to(model.device)
 
-outputs = model.generate(inputs, max_new_tokens=1024, temperature=0.6, top_p=0.95)
-print(tokenizer.decode(outputs[0], skip_special_tokens=True))
+outputs = model.generate(**inputs, max_new_tokens=1500, temperature=0.6, top_p=0.95)
+print(tokenizer.decode(outputs[0][inputs["input_ids"].shape[-1]:], skip_special_tokens=True))
 ```
 
 ## Intended Use
