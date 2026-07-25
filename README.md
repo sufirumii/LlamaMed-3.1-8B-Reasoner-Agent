@@ -1,33 +1,16 @@
----
-license: apache-2.0
-base_model: unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit
-datasets:
-- lingshu-medical-mllm/ReasonMed
-library_name: transformers
-pipeline_tag: text-generation
-tags:
-- medical
-- reasoning
-- llama-3.1
-- reasonmed
-- chain-of-thought
-language:
-- en
----
-
 # LlamaMed-3.1-8B-Reasoner
 
-<p align="center">
-  <img src="https://cdn-uploads.huggingface.co/production/uploads/66e00ba55e4fd4bfead4a97c/SpwOsRpS_Bd9pmC4k_I98.png" alt="LlamaMed-3.1-8B-Reasoner" width="100%">
-</p>
+<img width="1200" height="400" alt="LlamaMed-3.1-8B-Reasoner" src="https://github.com/user-attachments/assets/91085f09-a50c-43be-819c-932b6b8e9799" />
 
-LlamaMed-3.1-8B-Reasoner is a fine-tune of **Llama-3.1-8B-Instruct** trained
-on **ReasonMed**, a dataset of chain-of-thought medical reasoning over
-multiple-choice clinical questions. The model works through a question
-step by step — considering each answer option in turn — before giving a
-final answer, in the same structured reasoning style as its training data.
+[![Hugging Face](https://img.shields.io/badge/Hugging%20Face-Model-yellow)](https://huggingface.co/Rumiii/LlamaMed-3.1-8B-Reasoner)
 
-## Model Details
+A Llama-3.1-8B fine-tune that works through medical multiple-choice questions step by step, reasoning through each option before answering.
+
+## Overview
+
+LlamaMed-3.1-8B-Reasoner is fine-tuned from **Llama-3.1-8B-Instruct** on **ReasonMed**, a dataset of chain-of-thought medical reasoning over multiple-choice clinical questions. The model restates the question, evaluates each answer option, and reaches a final conclusion, following the reasoning structure of its training data.
+
+## Details
 
 - **Base model:** [unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit](https://huggingface.co/unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit)
 - **Dataset:** [lingshu-medical-mllm/ReasonMed](https://huggingface.co/datasets/lingshu-medical-mllm/ReasonMed) — 10,000 samples used for training
@@ -57,13 +40,10 @@ outputs = model.generate(inputs, max_new_tokens=1024, temperature=0.6, top_p=0.9
 print(tokenizer.decode(outputs[0], skip_special_tokens=True))
 ```
 
-## Training
-
-Trained on a single Tesla T4 GPU using Unsloth for memory-efficient QLoRA
-fine-tuning, with periodic adapter checkpoints saved during training.
-
 ## Intended Use
 
-This model is a research checkpoint intended for exploring medical
-reasoning fine-tunes. It is not validated for clinical use and should
-not be used to inform real medical decisions.
+This is a research checkpoint for exploring medical reasoning fine-tunes. It is not validated for clinical use and should not inform real medical decisions.
+
+## License
+
+Apache 2.0
