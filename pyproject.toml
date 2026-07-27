@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llamamed-agent"
+version = "0.1.0"
+description = "Local tool-calling AI agent around LlamaMed-3.1-8B-Reasoner, with clinical-PDF RAG"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+
+[project.scripts]
+llamamed-agent = "llamamed_agent.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["llamamed_agent*"]

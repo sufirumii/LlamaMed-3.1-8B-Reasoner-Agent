@@ -1,0 +1,29 @@
+# Core
+pyyaml>=6.0
+rich>=13.7.0
+numpy>=1.26.0
+
+# Local web UI server
+fastapi>=0.115.0
+uvicorn>=0.32.0
+python-multipart>=0.0.12
+
+# GGUF backend (default)
+llama-cpp-python>=0.3.2
+huggingface_hub>=0.25.0
+
+# Transformers backend (optional, use --backend transformers)
+transformers>=4.46.0
+torch>=2.3.0
+accelerate>=0.34.0
+bitsandbytes>=0.44.0
+sentencepiece
+
+# RAG / PDF processing
+sentence-transformers>=3.1.0
+faiss-cpu>=1.8.0
+pypdf>=4.3.0
+pdfplumber>=0.11.4
+
+# Corrective RAG web-search fallback (free, no API key/account)
+ddgs>=9.0.0

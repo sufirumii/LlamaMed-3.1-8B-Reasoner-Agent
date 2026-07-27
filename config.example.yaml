@@ -1,0 +1,36 @@
+# Copy this file to config.yaml and edit as needed.
+# Any field left out falls back to the default in llamamed_agent/config.py.
+
+model:
+  backend: gguf              # "gguf" or "transformers"
+
+  # gguf backend
+  gguf_path: models/LlamaMed-3.1-8B-Reasoner.Q4_K_M.gguf
+  gguf_hf_repo: null          # e.g. Rumiii/LlamaMed-3.1-8B-Reasoner-GGUF
+  gguf_hf_file: null          # e.g. LlamaMed-3.1-8B-Reasoner.Q4_K_M.gguf
+  n_ctx: 4096
+  n_gpu_layers: -1            # -1 = offload all layers if a GPU is available, 0 = CPU only
+
+  # transformers backend
+  hf_repo: Rumiii/LlamaMed-3.1-8B-Reasoner
+  load_in_4bit: false         # set true on small/consumer GPUs
+
+  temperature: 0.6
+  top_p: 0.95
+  max_new_tokens: 1024
+
+rag:
+  index_dir: data/index
+  pdf_dir: data/pdfs
+  embedding_model: sentence-transformers/all-MiniLM-L6-v2
+  chunk_size: 800
+  chunk_overlap: 120
+  top_k: 4
+
+  web_fallback_enabled: true    # Corrective RAG: fall back to free web search if local docs are weak
+  relevance_threshold: 0.35     # cosine similarity below this triggers the web fallback
+  max_web_results: 3
+
+agent:
+  max_iterations: 6
+  verbose: true
