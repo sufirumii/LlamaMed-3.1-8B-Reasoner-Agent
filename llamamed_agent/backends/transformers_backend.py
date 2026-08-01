@@ -7,7 +7,8 @@ config.yaml on smaller/consumer GPUs.
 
 from __future__ import annotations
 
-from typing import List, Optional
+import threading
+from typing import Iterator, List, Optional
 
 from .base import LLMBackend, truncate_at_stop
 from ..config import ModelConfig
@@ -60,3 +61,48 @@ class TransformersBackend(LLMBackend):
         new_tokens = output_ids[0][inputs["input_ids"].shape[-1]:]
         text = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
         return truncate_at_stop(text, stop)
+
+    def generate_stream(
+        self,
+        prompt: str,
+        stop: Optional[List[str]] = None,
+        max_tokens: int = 512,
+        temperature: float = 0.6,
+        top_p: float = 0.95,
+    ) -> Iterator[str]:
+        """Yields text chunks using HF's TextIteratorStreamer, running
+        `model.generate` on a background thread so we can read tokens as
+        they're produced instead of waiting for the whole sequence.
+        """
+        from transformers import TextIteratorStreamer
+
+        stop = stop or []
+        inputs = self.tokenizer(prompt, return_tensors="pt", add_special_tokens=False).to(
+            self.model.device
+        )
+        streamer = TextIteratorStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True)
+
+        gen_kwargs = dict(
+            **inputs,
+            max_new_tokens=max_tokens,
+            do_sample=temperature > 0,
+            temperature=max(temperature, 1e-5),
+            top_p=top_p,
+            pad_token_id=self.tokenizer.eos_token_id,
+            streamer=streamer,
+        )
+        thread = threading.Thread(target=self.model.generate, kwargs=gen_kwargs, daemon=True)
+        thread.start()
+
+        buffer = ""
+        try:
+            for piece in streamer:
+                if not piece:
+                    continue
+                buffer += piece
+                if any(s in buffer for s in stop):
+                    yield truncate_at_stop(buffer, stop)
+                    return
+                yield piece
+        finally:
+            thread.join(timeout=0.1)

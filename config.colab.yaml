@@ -1,0 +1,31 @@
+# Layered on top of config.yaml when you run with --profile colab, e.g.:
+#   llamamed-agent --profile colab chat
+#
+# Tuned for Google Colab's free tier (T4 GPU, ~12-16GB RAM): smaller context
+# window, GPU offload via llama.cpp (no bitsandbytes/CUDA-toolkit setup
+# needed), and a shorter response cap so a single turn doesn't stall the
+# runtime. Streaming stays on so you see output immediately rather than
+# waiting for the full generation in a notebook cell.
+
+model:
+  backend: gguf
+  gguf_hf_repo: Rumiii/LlamaMed-3.1-8B-Reasoner-GGUF   # set this to wherever your GGUF quant lives
+  gguf_hf_file: LlamaMed-3.1-8B-Reasoner.Q4_K_M.gguf
+  n_ctx: 2048
+  n_gpu_layers: -1        # offload everything to the T4
+  max_new_tokens: 512
+
+rag:
+  top_k: 3
+  max_web_results: 2      # PubMed + DuckDuckGo fallback, kept small to stay fast on Colab's network
+
+agent:
+  max_iterations: 4
+  verbose: true
+  stream: true
+
+memory:
+  enabled: true
+  sessions_dir: /content/llamamed_data/sessions
+  long_term_dir: /content/llamamed_data/memory_index
+  history_file: /content/llamamed_data/.cli_history

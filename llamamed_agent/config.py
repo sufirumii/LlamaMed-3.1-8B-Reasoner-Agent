@@ -63,6 +63,15 @@ class RagConfig:
 class AgentConfig:
     max_iterations: int = 6
     verbose: bool = True  # print Thought/Action/Observation trace to the console
+    stream: bool = True  # stream tokens to the console as they're generated
+
+
+@dataclass
+class MemoryConfig:
+    sessions_dir: str = "data/sessions"  # per-session transcript JSON files
+    long_term_dir: str = "data/memory_index"  # FAISS index of past (query, answer) pairs
+    enabled: bool = True
+    history_file: str = "data/.cli_history"  # readline-style command history for the CLI
 
 
 @dataclass
@@ -70,19 +79,34 @@ class Config:
     model: ModelConfig = field(default_factory=ModelConfig)
     rag: RagConfig = field(default_factory=RagConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
+    memory: MemoryConfig = field(default_factory=MemoryConfig)
 
     @classmethod
-    def load(cls, path: Optional[str] = None) -> "Config":
+    def load(cls, path: Optional[str] = None, profile: Optional[str] = None) -> "Config":
+        """Loads defaults, then config.yaml (or an explicit path), then an
+        optional named profile file (e.g. profile="colab" -> config.colab.yaml)
+        layered on top, then environment variables. Later sources win.
+        """
         cfg = cls()
         yaml_path = Path(path) if path else PROJECT_ROOT / "config.yaml"
         if yaml_path.exists():
-            with open(yaml_path, "r", encoding="utf-8") as f:
-                raw = yaml.safe_load(f) or {}
-            _merge_section(cfg.model, raw.get("model", {}))
-            _merge_section(cfg.rag, raw.get("rag", {}))
-            _merge_section(cfg.agent, raw.get("agent", {}))
+            cfg._merge_yaml(yaml_path)
+
+        if profile:
+            profile_path = PROJECT_ROOT / f"config.{profile}.yaml"
+            if profile_path.exists():
+                cfg._merge_yaml(profile_path)
+
         _apply_env_overrides(cfg)
         return cfg
+
+    def _merge_yaml(self, yaml_path: Path) -> None:
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+        _merge_section(self.model, raw.get("model", {}))
+        _merge_section(self.rag, raw.get("rag", {}))
+        _merge_section(self.agent, raw.get("agent", {}))
+        _merge_section(self.memory, raw.get("memory", {}))
 
 
 def _merge_section(section_obj, values: dict) -> None:
@@ -100,6 +124,8 @@ def _apply_env_overrides(cfg: Config) -> None:
         "LLAMAMED_TEMPERATURE": ("model", "temperature", float),
         "LLAMAMED_INDEX_DIR": ("rag", "index_dir", str),
         "LLAMAMED_TOP_K": ("rag", "top_k", int),
+        "LLAMAMED_STREAM": ("agent", "stream", lambda v: v.lower() not in ("0", "false", "no")),
+        "LLAMAMED_MEMORY_DIR": ("memory", "long_term_dir", str),
     }
     for env_key, (section, attr, cast) in env_map.items():
         if env_key in os.environ:

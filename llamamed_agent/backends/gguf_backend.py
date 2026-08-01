@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import Iterator, List, Optional
 
 from .base import LLMBackend, truncate_at_stop
 from ..config import ModelConfig
@@ -79,6 +79,47 @@ class GGUFBackend(LLMBackend):
         )
         text = result["choices"][0]["text"]
         return truncate_at_stop(text, stop)
+
+    def generate_stream(
+        self,
+        prompt: str,
+        stop: Optional[List[str]] = None,
+        max_tokens: int = 512,
+        temperature: float = 0.6,
+        top_p: float = 0.95,
+    ) -> Iterator[str]:
+        """Yields text chunks as llama.cpp produces them.
+
+        llama-cpp-python's own `stop` handling can leave a trailing partial
+        match in the last chunk, so we still buffer just enough to trim a
+        stop string that arrives split across two chunks.
+        """
+        stop = stop or []
+        stream = self._llm(
+            prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            stop=stop,
+            echo=False,
+            stream=True,
+        )
+        buffer = ""
+        for chunk in stream:
+            piece = chunk["choices"][0]["text"]
+            if not piece:
+                continue
+            buffer += piece
+            # Only flush what's safe: hold back a small tail in case a stop
+            # string is currently split across the chunk boundary.
+            safe_len = max(0, len(buffer) - max((len(s) for s in stop), default=0))
+            if safe_len > 0:
+                yield truncate_at_stop(buffer[:safe_len], stop)
+                buffer = buffer[safe_len:]
+            if any(s in buffer for s in stop):
+                break
+        if buffer:
+            yield truncate_at_stop(buffer, stop)
 
     def close(self) -> None:
         # llama-cpp-python frees resources on GC; nothing explicit needed.

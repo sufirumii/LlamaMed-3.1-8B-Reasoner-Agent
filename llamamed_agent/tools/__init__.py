@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from ..backends.base import LLMBackend
 from ..config import Config
+from ..memory import LongTermMemory
 from .base import Tool, ToolRegistry
 from .calculator_tool import ClinicalCalculatorTool
+from .memory_tool import RecallMemoryTool
 from .pdf_tool import IngestPDFTool, ReadPDFPagesTool
+from .pubmed_tool import SearchPubMedTool
 from .rag_tool import SearchDocumentsTool
 
 
-def build_default_registry(cfg: Config, backend: LLMBackend) -> ToolRegistry:
+def build_default_registry(
+    cfg: Config, backend: LLMBackend, memory: Optional[LongTermMemory] = None
+) -> ToolRegistry:
     tools = [
         SearchDocumentsTool(
             backend=backend,
@@ -27,7 +34,10 @@ def build_default_registry(cfg: Config, backend: LLMBackend) -> ToolRegistry:
         ),
         ReadPDFPagesTool(),
         ClinicalCalculatorTool(),
+        SearchPubMedTool(),
     ]
+    if memory is not None:
+        tools.append(RecallMemoryTool(memory))
     return ToolRegistry(tools)
 
 

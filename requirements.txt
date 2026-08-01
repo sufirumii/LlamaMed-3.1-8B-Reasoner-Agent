@@ -2,6 +2,10 @@
 pyyaml>=6.0
 rich>=13.7.0
 numpy>=1.26.0
+requests>=2.31.0
+
+# CLI command history (arrow-key recall), falls back to plain input() if unavailable
+prompt_toolkit>=3.0.43
 
 # Local web UI server
 fastapi>=0.115.0
@@ -27,3 +31,4 @@ pdfplumber>=0.11.4
 
 # Corrective RAG web-search fallback (free, no API key/account)
 ddgs>=9.0.0
+# PubMed E-utilities fallback uses the `requests` dependency listed above (no extra package, no API key)

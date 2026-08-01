@@ -19,6 +19,7 @@ from typing import List, Optional
 
 from ..backends.base import LLMBackend, build_llama3_prompt
 from .embeddings import Embedder
+from .pubmed_search import pubmed_search
 from .store import VectorStore
 from .web_search import web_search
 
@@ -92,16 +93,37 @@ def retrieve_with_correction(
     if not web_fallback_enabled or not needs_web:
         return local_results
 
-    web_hits = web_search(query, max_results=max_web_results)
-    web_results = [
+    # Two independent, free, no-key alternatives: try PubMed first since
+    # it's the higher-quality source for biomedical queries (peer-reviewed
+    # abstracts), then top up with DuckDuckGo -- useful both as a general
+    # fallback and for anything PubMed's index doesn't cover. Each source
+    # fails soft on its own, so one going down never blocks the other.
+    remaining = max_web_results
+    web_results: List[RetrievalResult] = []
+
+    pubmed_hits = pubmed_search(query, max_results=remaining)
+    web_results.extend(
         RetrievalResult(
             text=f"{hit['title']}: {hit['snippet']}",
-            source="web",
+            source="pubmed",
             citation=hit["url"],
         )
-        for hit in web_hits
+        for hit in pubmed_hits
         if hit.get("snippet")
-    ]
+    )
+    remaining = max(0, max_web_results - len(web_results))
+
+    if remaining > 0:
+        ddg_hits = web_search(query, max_results=remaining)
+        web_results.extend(
+            RetrievalResult(
+                text=f"{hit['title']}: {hit['snippet']}",
+                source="web",
+                citation=hit["url"],
+            )
+            for hit in ddg_hits
+            if hit.get("snippet")
+        )
 
     # Keep any genuinely useful local passages and supplement with web
     # results, rather than discarding local evidence just because it

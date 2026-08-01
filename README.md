@@ -24,18 +24,23 @@ your own machine.
 - **Dual local backends** -- run the model via **GGUF/llama.cpp**
   (default; CPU or GPU, no CUDA toolkit required) or via **Transformers**
   (matches how the model was trained, needs an NVIDIA GPU). Swap with one
-  config field or `--backend` flag.
-- **Attach PDFs + Corrective RAG** -- attach any PDF (any medical
-  subdomain, since the documents define the scope, not hardcoded logic)
-  and the agent searches it. Deliberately **one retrieval algorithm, not
-  several stacked together**: retrieved passages are graded (a cheap
-  similarity threshold, with an LLM double-check only in the borderline
-  zone), and when the attached documents don't have a good enough answer,
-  the agent automatically falls back to a **free web search** (no API
-  key, no account, no email) -- clearly labeling which parts of its
-  answer came from your documents versus the web.
+  config field or `--backend` flag. Both backends support real token
+  **streaming** (`generate_stream`), not just single-shot generation.
+- **Attach PDFs + Corrective RAG with two free web alternatives** --
+  attach any PDF (any medical subdomain, since the documents define the
+  scope, not hardcoded logic) and the agent searches it. Retrieved
+  passages are graded (a cheap similarity threshold, with an LLM
+  double-check only in the borderline zone), and when the attached
+  documents don't have a good enough answer, the agent automatically
+  falls back to **PubMed** (free, no API key, via NCBI E-utilities --
+  tried first since it's the higher-quality source for biomedical
+  queries) and then **DuckDuckGo web search** (no API key, no account) if
+  PubMed comes back empty -- clearly labeling which parts of its answer
+  came from your documents, PubMed, or the general web.
   `read_pdf_pages` still gives verbatim text from an exact page range
-  when precise wording matters more than a semantic match.
+  when precise wording matters more than a semantic match, and
+  `search_pubmed` is also exposed as its own tool for direct literature
+  lookups.
 - **Local web UI** -- a Claude-style chat interface (`llamamed-agent ui`):
   sidebar of past chats, attach PDFs with a paperclip button, a
   collapsible reasoning-trace view per reply. Pure HTML/CSS/JS, no
@@ -48,8 +53,32 @@ your own machine.
   doesn't have to (and shouldn't have to) do arithmetic in free text.
 - **Local FAISS vector store** -- two files on disk (`index.faiss` +
   `metadata.json`), no server or external service required.
-- **Clean CLI** -- `chat`, `ask`, and `ingest` subcommands with a
-  readable Rich-rendered trace of the agent's reasoning.
+- **Persistent memory** -- every chat session's transcript is saved to
+  `data/sessions/<id>.json` and can be resumed with `chat --session <id>`.
+  Separately, a long-term **semantic memory** of past (question, answer)
+  pairs across *all* sessions is kept in its own FAISS index and is
+  searchable by the agent itself via a `recall_memory` tool -- so it can
+  reuse a prior calculation or literature search instead of redoing the
+  reasoning from scratch.
+- **Explicit guardrails, enforced outside the model** -- `guardrails.py`
+  is a deterministic check that runs on every turn regardless of what the
+  model decides: it blocks prompt-injection attempts and self-harm-framed
+  dosing questions *before* generation starts, and guarantees the
+  "confirm with a licensed clinician" disclaimer is present on any answer
+  that touches dosing/treatment/diagnosis language. See `/policy` in the
+  chat CLI, or `guardrails.GUARDRAIL_POLICY`, for the full written policy.
+- **A CLI built for actual use, not just a demo** -- `chat`, `ask`,
+  `ingest`, and `ui` subcommands, with:
+  - colored, readable output (distinct styles for thoughts, tool calls,
+    observations, final answers, warnings, and blocked turns)
+  - live token **streaming** as the model generates (toggle with
+    `agent.stream` in config, or `--no-stream`)
+  - **arrow-key command history**, persisted across runs
+  - **slash commands**: `/help`, `/tools`, `/config`, `/history`,
+    `/sessions`, `/memory <query>`, `/policy`, `/clear`
+  - **configuration profiles** layered on top of `config.yaml`, e.g.
+    `--profile colab` for a Colab-tuned setup (see
+    `LlamaMed_Agent_Colab.ipynb` for a runnable end-to-end notebook)
 
 ## Architecture
 
@@ -163,6 +192,24 @@ reply. Each chat gets its own document index, so what you attach in one
 chat doesn't show up in another. `--port` to change the port,
 `--backend` to override `model.backend` for this run, same as `chat`/`ask`.
 
+### 5. Or run it in Google Colab
+
+`LlamaMed_Agent_Colab.ipynb` is a runnable, end-to-end notebook: clone,
+install (including a prebuilt CUDA wheel for `llama-cpp-python` so GPU
+offload works without compiling anything), download the model, and run
+`ask`/`chat` with the `colab` config profile (`--profile colab`), which
+uses a smaller context window and shorter responses tuned for a free-tier
+T4. Session and long-term memory persist under `/content/llamamed_data/`
+for the life of the runtime.
+
+### Interactive chat features
+
+`llamamed-agent chat` streams tokens live as they're generated, keeps
+arrow-key command history across runs, and supports slash commands:
+`/help`, `/tools`, `/config`, `/history`, `/sessions`, `/memory <query>`,
+`/policy`, `/clear`. Use `--session <id>` to resume a previous session
+(the id is shown in the banner when a new one starts).
+
 ## Configuration reference
 
 All fields live in `config.yaml` (see `config.example.yaml`); anything
@@ -187,20 +234,48 @@ omitted falls back to the defaults in `llamamed_agent/config.py`.
 
 Every field also has an env-var override (`LLAMAMED_BACKEND`,
 `LLAMAMED_GGUF_PATH`, `LLAMAMED_HF_REPO`, `LLAMAMED_TEMPERATURE`,
-`LLAMAMED_INDEX_DIR`, `LLAMAMED_TOP_K`).
+`LLAMAMED_INDEX_DIR`, `LLAMAMED_TOP_K`, `LLAMAMED_STREAM`,
+`LLAMAMED_MEMORY_DIR`). Layer a named profile on top of `config.yaml` with
+`--profile <name>`, which loads `config.<name>.yaml` if present -- see
+`config.colab.yaml` for a ready-made Colab profile.
 
 ## Available tools
 
 | Tool | Purpose |
 |---|---|
-| `search_documents` | Corrective RAG search over attached PDFs; auto-falls back to free web search when local results are weak |
+| `search_documents` | Corrective RAG search over attached PDFs; auto-falls back to PubMed, then DuckDuckGo, when local results are weak |
 | `ingest_pdf` | Ingest a PDF the agent is told about mid-conversation |
 | `read_pdf_pages` | Verbatim text of an exact page range, for when precise wording matters |
 | `clinical_calculator` | `bmi`, `egfr_ckd_epi_2021`, `anion_gap`, `corrected_calcium`, `mean_arterial_pressure` |
+| `search_pubmed` | Direct PubMed literature search (free, no API key), for general evidence questions not tied to an attached document |
+| `recall_memory` | Searches past sessions' (question, answer) pairs for something similar already worked out |
 
 Adding a new tool means implementing `Tool.run()` in `llamamed_agent/tools/`
 and registering it in `tools/__init__.py:build_default_registry` -- no
 changes to the agent loop itself are needed.
+
+## Memory & guardrails
+
+- **Session memory** -- every `chat` session is saved to
+  `data/sessions/<session-id>.json` as it goes. Resume one later with
+  `llamamed-agent chat --session <session-id>` (the id is printed in the
+  banner when a session starts), or list all of them with `/sessions`.
+- **Long-term memory** -- a separate FAISS index (`data/memory_index/`,
+  configurable via `memory.long_term_dir`) stores every (question, answer)
+  pair across all sessions. The agent can search it itself via the
+  `recall_memory` tool, and you can search it manually with `/memory
+  <query>` in the chat CLI. Set `memory.enabled: false` to turn this off
+  entirely.
+- **Guardrails** -- `llamamed_agent/guardrails.py` is a small,
+  deterministic policy layer that runs *outside* the model's control on
+  every turn: `check_input()` blocks a narrow set of clear violations
+  (prompt-injection attempts, self-harm-framed dosing questions) before
+  any generation happens, and `check_output()` guarantees the "confirm
+  with a licensed clinician" disclaimer is present whenever an answer
+  touches dosing/treatment/diagnosis language, even if the model forgets
+  to add it. Run `/policy` in the chat CLI to see the full written policy.
+  This is a backstop, not a clinical-safety oracle -- it doesn't replace
+  the system prompt's own rules or human judgment.
 
 ## Testing
 
@@ -210,10 +285,12 @@ pytest tests/
 ```
 
 The test suite covers the parser, calculators, chunker, Corrective RAG
-scoring/fallback logic, and the server's HTTP contract (session CRUD, a
-full attach -> ingest -> retrieve -> answer round trip, per-session
-document isolation) -- all against fake backends/embedders, so no model
-download or network access is needed and the full suite runs in about a
+scoring/fallback logic (including the PubMed-then-DuckDuckGo fallback
+chain), guardrail checks, session/long-term memory, and the server's HTTP
+contract (session CRUD, a full attach -> ingest -> retrieve -> answer
+round trip, per-session document isolation) -- all against fake
+backends/embedders, so no model download or network access is needed and
+the full suite runs in about a
 second.
 
 ## Fine-tuning

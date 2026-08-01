@@ -66,9 +66,10 @@ class SearchDocumentsTool(Tool):
                 "rephrasing the query."
             )
 
+        tags = {"local": "[Attached PDF]", "pubmed": "[PubMed]", "web": "[Web]"}
         blocks = []
         for r in results:
-            tag = "[Attached PDF]" if r.source == "local" else "[Web]"
+            tag = tags.get(r.source, "[Web]")
             score_note = f", score={r.score:.2f}" if r.score is not None else ""
             blocks.append(f"{tag} {r.citation}{score_note}\n{r.text}")
         return "\n\n---\n\n".join(blocks)

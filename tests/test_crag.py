@@ -47,12 +47,14 @@ class FakeBackend(LLMBackend):
 def test_strong_local_match_skips_web_search():
     store = FakeStore([({"text": "good match", "source": "a.pdf", "page": 1}, 0.9)])
     backend = FakeBackend()
-    with patch("llamamed_agent.rag.crag.web_search") as mock_web:
+    with patch("llamamed_agent.rag.crag.web_search") as mock_web, \
+         patch("llamamed_agent.rag.crag.pubmed_search") as mock_pubmed:
         results = retrieve_with_correction(
             "query", store, FakeEmbedder(), backend,
             relevance_threshold=0.35, web_fallback_enabled=True,
         )
     mock_web.assert_not_called()
+    mock_pubmed.assert_not_called()
     assert len(results) == 1
     assert results[0].source == "local"
 
@@ -60,7 +62,9 @@ def test_strong_local_match_skips_web_search():
 def test_weak_local_match_triggers_web_fallback():
     store = FakeStore([({"text": "weak match", "source": "a.pdf", "page": 1}, 0.05)])
     backend = FakeBackend()
-    with patch("llamamed_agent.rag.crag.web_search") as mock_web:
+    with patch("llamamed_agent.rag.crag.web_search") as mock_web, \
+         patch("llamamed_agent.rag.crag.pubmed_search") as mock_pubmed:
+        mock_pubmed.return_value = []  # PubMed comes up empty, should fall through to DuckDuckGo
         mock_web.return_value = [
             {"title": "Result", "url": "http://example.com", "snippet": "web snippet"}
         ]
@@ -68,15 +72,36 @@ def test_weak_local_match_triggers_web_fallback():
             "query", store, FakeEmbedder(), backend,
             relevance_threshold=0.35, web_fallback_enabled=True,
         )
+    mock_pubmed.assert_called_once()
     mock_web.assert_called_once()
     sources = {r.source for r in results}
     assert "web" in sources
     assert "local" in sources  # weak local result is kept, not discarded
 
 
+def test_pubmed_hit_short_circuits_duckduckgo():
+    store = FakeStore([({"text": "weak match", "source": "a.pdf", "page": 1}, 0.05)])
+    backend = FakeBackend()
+    with patch("llamamed_agent.rag.crag.web_search") as mock_web, \
+         patch("llamamed_agent.rag.crag.pubmed_search") as mock_pubmed:
+        mock_pubmed.return_value = [
+            {"title": "Paper", "url": "http://pubmed.example/1", "snippet": "abstract text"}
+        ]
+        results = retrieve_with_correction(
+            "query", store, FakeEmbedder(), backend,
+            relevance_threshold=0.35, web_fallback_enabled=True, max_web_results=1,
+        )
+    mock_pubmed.assert_called_once()
+    mock_web.assert_not_called()  # PubMed already filled the quota, no need for DuckDuckGo
+    sources = {r.source for r in results}
+    assert "pubmed" in sources
+
+
 def test_no_local_store_goes_straight_to_web():
     backend = FakeBackend()
-    with patch("llamamed_agent.rag.crag.web_search") as mock_web:
+    with patch("llamamed_agent.rag.crag.web_search") as mock_web, \
+         patch("llamamed_agent.rag.crag.pubmed_search") as mock_pubmed:
+        mock_pubmed.return_value = []
         mock_web.return_value = [
             {"title": "Result", "url": "http://example.com", "snippet": "web snippet"}
         ]
@@ -92,12 +117,14 @@ def test_no_local_store_goes_straight_to_web():
 def test_web_fallback_disabled_returns_local_only_even_if_weak():
     store = FakeStore([({"text": "weak match", "source": "a.pdf", "page": 1}, 0.05)])
     backend = FakeBackend()
-    with patch("llamamed_agent.rag.crag.web_search") as mock_web:
+    with patch("llamamed_agent.rag.crag.web_search") as mock_web, \
+         patch("llamamed_agent.rag.crag.pubmed_search") as mock_pubmed:
         results = retrieve_with_correction(
             "query", store, FakeEmbedder(), backend,
             relevance_threshold=0.35, web_fallback_enabled=False,
         )
     mock_web.assert_not_called()
+    mock_pubmed.assert_not_called()
     assert len(results) == 1
     assert results[0].source == "local"
 
@@ -106,7 +133,9 @@ def test_borderline_score_defers_to_llm_grading():
     # best_score is within the borderline band above the threshold
     store = FakeStore([({"text": "borderline match", "source": "a.pdf", "page": 1}, 0.40)])
     backend = FakeBackend(grade_verdict="irrelevant")
-    with patch("llamamed_agent.rag.crag.web_search") as mock_web:
+    with patch("llamamed_agent.rag.crag.web_search") as mock_web, \
+         patch("llamamed_agent.rag.crag.pubmed_search") as mock_pubmed:
+        mock_pubmed.return_value = []
         mock_web.return_value = []
         retrieve_with_correction(
             "query", store, FakeEmbedder(), backend,

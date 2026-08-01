@@ -17,7 +17,7 @@ identical across backends and avoids surprises from template drift.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import Iterator, List, Optional
 
 
 def build_llama3_prompt(system: str, user: str, scratchpad: str = "") -> str:
@@ -60,6 +60,24 @@ class LLMBackend(ABC):
     ) -> str:
         """Returns the generated continuation only (not the prompt)."""
         raise NotImplementedError
+
+    def generate_stream(
+        self,
+        prompt: str,
+        stop: Optional[List[str]] = None,
+        max_tokens: int = 512,
+        temperature: float = 0.6,
+        top_p: float = 0.95,
+    ) -> Iterator[str]:
+        """Yields the generated continuation incrementally, token-chunk by
+
+        token-chunk. Default implementation falls back to a single
+        non-streaming call and yields it once -- subclasses that support
+        real token streaming (GGUF, Transformers) override this so the CLI
+        can render output as it's produced instead of waiting for the full
+        generation to finish.
+        """
+        yield self.generate(prompt, stop=stop, max_tokens=max_tokens, temperature=temperature, top_p=top_p)
 
     def close(self) -> None:
         pass

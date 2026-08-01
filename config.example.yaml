@@ -34,3 +34,12 @@ rag:
 agent:
   max_iterations: 6
   verbose: true
+  stream: true                  # stream tokens to the console as they're generated
+
+memory:
+  enabled: true
+  sessions_dir: data/sessions        # per-session transcript JSON, resumable with --session <id>
+  long_term_dir: data/memory_index   # FAISS index of past (query, answer) pairs, searched by recall_memory
+  history_file: data/.cli_history    # arrow-key command history for the chat CLI
+
+# NCBI_API_KEY env var is optional -- raises the PubMed rate limit from 3 to 10 req/s if set.
